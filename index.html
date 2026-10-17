@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Петля</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Unbounded:wght@500;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #070a12; --panel: #0e1424; --line: #1e2840; --text: #dfe7ff; --dim: #7b88a8;
+    --A: #3ee6ff; --B: #ff4fd8; --C: #ffc24a; --exit: #5dff9e; --warn: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -10%, #142046 0%, var(--bg) 60%);
+    color: var(--text); font-family: 'JetBrains Mono', monospace; overflow-x: hidden;
+    display: flex; flex-direction: column; align-items: center; padding: 16px;
+  }
+  header { width: 100%; max-width: 900px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-family: 'Unbounded', sans-serif; font-weight: 800; letter-spacing: .08em; margin: 0; font-size: 28px;
+       background: linear-gradient(90deg, var(--A), var(--B)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .levels { display: flex; gap: 6px; flex-wrap: wrap; }
+  .levels button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--dim);
+                   font: inherit; cursor: pointer; }
+  .levels button.done { color: var(--exit); border-color: #2a5a40; }
+  .levels button.cur { color: var(--text); border-color: var(--A); box-shadow: 0 0 12px #3ee6ff55; }
+  .levels button:disabled { opacity: .3; cursor: default; }
+  .info { width: 100%; max-width: 900px; margin: 14px 0 10px; }
+  .info .title { font-family: 'Unbounded', sans-serif; font-size: 18px; }
+  .info .title span { color: var(--dim); font-size: 14px; margin-right: 8px; }
+  .info .hint { color: var(--dim); font-size: 13px; margin-top: 6px; line-height: 1.5; }
+  .stage { position: relative; width: 100%; max-width: 900px; }
+  canvas { display: block; width: 100%; border-radius: 14px; background: #0a0f1c; border: 1px solid var(--line); }
+  .hud { width: 100%; max-width: 900px; display: flex; gap: 16px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  .stat { font-size: 13px; color: var(--dim); }
+  .stat b { color: var(--text); font-size: 16px; }
+  .timeline { flex: 1; min-width: 220px; height: 22px; display: flex; gap: 2px; position: relative; }
+  .timeline i { flex: 1; border-radius: 3px; background: var(--line); position: relative; }
+  .timeline i.past { background: linear-gradient(180deg, #3ee6ff, #2a8fb0); }
+  .timeline i.end::after { content: ''; position: absolute; left: 50%; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: #b69cff; border-radius: 1px; }
+  .echoes { display: flex; gap: 5px; }
+  .echoes i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #b69cff; }
+  .echoes i.used { background: #b69cff; box-shadow: 0 0 8px #b69cff; }
+  .keys { width: 100%; max-width: 900px; margin-top: 12px; color: var(--dim); font-size: 12px; line-height: 1.9; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; color: var(--text); background: var(--panel); }
+  .toast { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); background: #1a0f18ee; border: 1px solid var(--warn);
+           color: #ffd0d0; padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+  .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+             background: #050811cc; border-radius: 14px; backdrop-filter: blur(3px); text-align: center; padding: 16px; }
+  .overlay.show { display: flex; }
+  .overlay h2 { font-family: 'Unbounded', sans-serif; margin: 0; font-size: 30px; color: var(--exit); text-shadow: 0 0 20px #5dff9e88; }
+  .overlay p { margin: 0; color: var(--dim); }
+  .overlay button, .pad button { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--A); border-radius: 10px; padding: 10px 18px; cursor: pointer; }
+  .pad { display: none; margin-top: 12px; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .pad button { min-width: 52px; padding: 12px; border-color: var(--line); }
+  @media (pointer: coarse) { .pad { display: flex; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>ПЕТЛЯ</h1>
+  <div class="levels" id="levels"></div>
+</header>
+<div class="info">
+  <div class="title" id="title"></div>
+  <div class="hint" id="hint"></div>
+</div>
+<div class="stage">
+  <canvas id="cv"></canvas>
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="win">
+    <h2 id="winTitle">Выход найден</h2>
+    <p id="winText"></p>
+    <button id="nextBtn">Дальше →</button>
+  </div>
+</div>
+<div class="hud">
+  <div class="stat">ход <b id="turn">0</b> / <span id="maxT"></span></div>
+  <div class="timeline" id="timeline"></div>
+  <div class="stat">эхо</div>
+  <div class="echoes" id="echoes"></div>
+</div>
+<div class="pad">
+  <button data-k="U">↑</button><button data-k="L">←</button><button data-k="D">↓</button><button data-k="R">→</button>
+  <button data-k="W">ждать</button><button data-k="loop">петля</button><button data-k="undo">отмена</button>
+</div>
+<div class="keys">
+  <kbd>←↑↓→</kbd>/<kbd>WASD</kbd> шаг · <kbd>Пробел</kbd> ждать · <kbd>E</kbd>/<kbd>Enter</kbd> замкнуть петлю (ты станешь эхом) ·
+  <kbd>Z</kbd>/<kbd>Backspace</kbd> отмена · <kbd>R</kbd> заново · <kbd>M</kbd> звук<br>
+  Эхо повторяет твои нажатия с первого хода и исчезает, когда его петля заканчивается. Точки — его ближайшее будущее.
+</div>
+
+<script src="engine.js"></script>
+<script>
+(() => {
+  const { LEVELS, parseLevel, simulate, isWin } = window.Petlya;
+  const KEY_COL = { A: '#3ee6ff', B: '#ff4fd8', C: '#ffc24a' };
+  const ECHO_COL = ['#b69cff', '#ff9c7a', '#7affd1'];
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+
+  const store = {
+    get() { try { return JSON.parse(localStorage.getItem('petlya') || '{}'); } catch { return {}; } },
+    set(v) { try { localStorage.setItem('petlya', JSON.stringify(v)); } catch {} },
+  };
+  const saved = store.get();
+  const done = new Set(saved.done || []);
+
+  let li = 0, lv, echoes, cur, frames, preview, won = false;
+  let anim = null;          // { from, to, start, dur }
+  let rewindAnim = null;    // { frames, start, dur }
+  let muted = !!saved.muted;
+
+  // ---------- звук ----------
+  let ac = null;
+  function tone(freq, dur = 0.08, type = 'sine', vol = 0.06, slide = 0) {
+    if (muted) return;
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+      o.type = type; o.frequency.setValueAtTime(freq, t);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur);
+    } catch {}
+  }
+
+  // ---------- состояние ----------
+  function load(i) {
+    li = i; lv = parseLevel(LEVELS[i]); echoes = []; cur = []; won = false;
+    $('win').classList.remove('show');
+    recompute(false);
+    renderLevels(); resize();
+  }
+
+  function recompute(animate = true) {
+    const prevFrame = frames ? frames[frames.length - 1] : null;
+    frames = simulate(lv, echoes, cur);
+    preview = simulate(lv, echoes, cur, lv.maxT - cur.length);
+    const f = frames[frames.length - 1];
+    if (animate && prevFrame) anim = { from: prevFrame, to: f, start: performance.now(), dur: 130 };
+    else anim = null;
+    updateHud();
+  }
+
+  function act(k) {
+    if (rewindAnim) return;
+    if (won) { if (k === 'loop' || k === 'next') next(); return; }
+    if (k === 'undo') return undo();
+    if (k === 'restart') { tone(200, 0.2, 'triangle', 0.05, -120); return load(li); }
+    if (k === 'loop') return closeLoop();
+    if (cur.length >= lv.maxT) { toast('Время петли вышло — нажми E, чтобы замкнуть её, или Z'); tone(110, 0.15, 'square', 0.03); return; }
+    const before = frames[frames.length - 1];
+    cur.push(k);
+    recompute();
+    const f = frames[frames.length - 1];
+    const pi = f.pos.length - 1;
+    if (f.blocked[pi]) tone(90, 0.08, 'square', 0.03);
+    else tone(k === 'W' ? 330 : 440 + cur.length * 12, 0.06, 'triangle', 0.04);
+    if (f.open.some((o, i) => o !== before.open[i])) tone(660, 0.12, 'sine', 0.04, 220);
+    const gone = before.alive.some((a, i) => a && !f.alive[i]);
+    if (gone) tone(520, 0.25, 'sine', 0.03, -400);
+    if (isWin(lv, f)) win();
+  }
+
+  function undo() {
+    if (cur.length) { cur.pop(); tone(300, 0.06, 'triangle', 0.03, -80); recompute(); }
+    else if (echoes.length) { cur = echoes.pop(); tone(250, 0.15, 'sine', 0.04, -100); recompute(false); }
+  }
+
+  function closeLoop() {
+    if (!cur.length) { toast('Сначала сделай хоть один ход'); return; }
+    if (echoes.length >= lv.maxEchoes) { toast('Все эхо уже использованы — Z отменит, R начнёт заново'); tone(110, 0.15, 'square', 0.03); return; }
+    rewindAnim = { frames: frames.slice(), start: performance.now(), dur: Math.min(900, 120 + frames.length * 45) };
+    tone(900, 0.5, 'sawtooth', 0.025, -760);
+    echoes.push(cur); cur = [];
+    setTimeout(() => { rewindAnim = null; recompute(false); }, rewindAnim.dur);
+  }
+
+  function win() {
+    won = true; done.add(li); store.set({ done: [...done], muted });
+    [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.25, 'triangle', 0.05), i * 110));
+    setTimeout(() => {
+      const last = li === LEVELS.length - 1;
+      $('winTitle').textContent = last ? 'Петля замкнута' : 'Выход найден';
+      $('winText').textContent = `Ходов: ${cur.length} · эхо: ${echoes.length} из ${lv.maxEchoes}` + (last ? ' · все уровни пройдены!' : '');
+      $('nextBtn').textContent = last ? 'Сначала ↺' : 'Дальше →';
+      $('win').classList.add('show');
+      renderLevels();
+    }, 350);
+  }
+  function next() { load((li + 1) % LEVELS.length); }
+
+  // ---------- HUD ----------
+  let toastTimer;
+  function toast(msg) {
+    const el = $('toast'); el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+  function renderLevels() {
+    const box = $('levels'); box.innerHTML = '';
+    LEVELS.forEach((L, i) => {
+      const b = document.createElement('button');
+      b.textContent = i + 1; b.title = L.name;
+      if (done.has(i)) b.classList.add('done');
+      if (i === li) b.classList.add('cur');
+      b.disabled = i > 0 && !done.has(i - 1) && !done.has(i);
+      b.onclick = () => { load(i); b.blur(); };
+      box.appendChild(b);
+    });
+    $('title').innerHTML = `<span>${li + 1}/${LEVELS.length}</span>${lv.name}`;
+    $('hint').textContent = lv.hint;
+  }
+  function updateHud() {
+    $('turn').textContent = cur.length; $('maxT').textContent = lv.maxT;
+    const ends = new Set(echoes.map(e => e.length));
+    $('timeline').innerHTML = Array.from({ length: lv.maxT }, (_, i) =>
+      `<i class="${i < cur.length ? 'past' : ''} ${ends.has(i + 1) ? 'end' : ''}"></i>`).join('');
+    $('echoes').innerHTML = Array.from({ length: lv.maxEchoes }, (_, i) => `<i class="${i < echoes.length ? 'used' : ''}"></i>`).join('');
+  }
+
+  // ---------- отрисовка ----------
+  let ts = 48, ox = 0, oy = 0, dpr = 1;
+  function resize() {
+    if (!lv) return;
+    dpr = window.devicePixelRatio || 1;
+    const W = cv.parentElement.clientWidth;
+    const maxH = Math.max(260, window.innerHeight - 330);
+    ts = Math.floor(Math.min((W - 24) / lv.w, maxH / lv.h, 64));
+    const H = ts * lv.h + 24;
+    cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + 'px';
+    ox = Math.floor((W - ts * lv.w) / 2); oy = 12;
+  }
+  window.addEventListener('resize', resize);
+
+  function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+
+  function drawTiles(f, now) {
+    for (let y = 0; y < lv.h; y++) for (let x = 0; x < lv.w; x++) {
+      const c = lv.tiles[y][x], px = ox + x * ts, py = oy + y * ts;
+      if (c === ' ') continue;
+      if (c === '#') {
+        ctx.fillStyle = '#18213a'; ctx.fillRect(px, py, ts, ts);
+        ctx.fillStyle = '#222d4c'; ctx.fillRect(px, py, ts, 3);
+        continue;
+      }
+      ctx.fillStyle = (x + y) % 2 ? '#0f1628' : '#111a2e'; ctx.fillRect(px, py, ts, ts);
+    }
+    // выход
+    const ex = ox + (lv.exit.x + .5) * ts, ey = oy + (lv.exit.y + .5) * ts;
+    for (let k = 0; k < 3; k++) {
+      ctx.strokeStyle = `rgba(93,255,158,${0.8 - k * 0.22})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(ex, ey, ts * (0.14 + k * 0.1), now / (400 + k * 200) + k, now / (400 + k * 200) + k + Math.PI * 1.3); ctx.stroke();
+    }
+    // плиты
+    for (const p of lv.plates) {
+      const px = ox + p.x * ts, py = oy + p.y * ts, col = KEY_COL[p.key], on = f.pressed.has(p.key);
+      ctx.save();
+      ctx.shadowColor = col; ctx.shadowBlur = on ? 18 : 4;
+      ctx.strokeStyle = col; ctx.lineWidth = 2;
+      rr(px + ts * .18, py + ts * .18, ts * .64, ts * .64, ts * .12); ctx.stroke();
+      if (on) { ctx.fillStyle = col + '55'; ctx.fill(); }
+      ctx.restore();
+      ctx.fillStyle = col; ctx.font = `700 ${ts * .3}px JetBrains Mono`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(p.key, px + ts / 2, py + ts / 2 + 1);
+    }
+    // двери
+    lv.doors.forEach((d, i) => {
+      const px = ox + d.x * ts, py = oy + d.y * ts, col = KEY_COL[d.key], open = f.open[i];
+      ctx.save();
+      if (!open) {
+        ctx.fillStyle = col + '30'; ctx.fillRect(px + 2, py + 2, ts - 4, ts - 4);
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 10;
+        ctx.strokeRect(px + 3, py + 3, ts - 6, ts - 6);
+        ctx.shadowBlur = 0;
+        ctx.beginPath(); ctx.rect(px + 3, py + 3, ts - 6, ts - 6); ctx.clip();
+        ctx.lineWidth = d.inv ? 2 : 3;
+        if (d.inv) for (let k = -ts; k < ts; k += ts / 5) { ctx.beginPath(); ctx.moveTo(px + k, py + ts); ctx.lineTo(px + k + ts, py); ctx.stroke(); }
+        else for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(px + k * ts / 4, py); ctx.lineTo(px + k * ts / 4, py + ts); ctx.stroke(); }
+      } else {
+        ctx.strokeStyle = col + '66'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5;
+        ctx.strokeRect(px + 4, py + 4, ts - 8, ts - 8);
+        if (d.inv) { ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(px + 8, py + ts - 8); ctx.lineTo(px + ts - 8, py + 8); ctx.stroke(); }
+      }
+      ctx.restore();
+    });
+  }
+
+  function lerpPos(a, b, k) { return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }; }
+
+  function drawEntities(f, from, k, now) {
+    const n = f.pos.length, pi = n - 1;
+    // прогноз будущего для эха
+    if (!rewindAnim && !won) {
+      for (let i = 0; i < pi; i++) {
+        if (!f.alive[i]) continue;
+        const col = ECHO_COL[i % ECHO_COL.length];
+        let last = f.pos[i];
+        for (let s = 1; s <= 4; s++) {
+          const pf = preview[f.t + s]; if (!pf) break;
+          if (!pf.alive[i]) {
+            ctx.strokeStyle = col + '88'; ctx.lineWidth = 2;
+            const cx = ox + (last.x + .5) * ts, cy = oy + (last.y + .5) * ts, r = ts * .12;
+            ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r); ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r); ctx.stroke();
+            break;
+          }
+          const p = pf.pos[i]; last = p;
+          ctx.fillStyle = col; ctx.globalAlpha = 0.55 - s * 0.11;
+          ctx.beginPath(); ctx.arc(ox + (p.x + .5) * ts + (i - 1) * 4, oy + (p.y + .5) * ts, ts * .07, 0, 7); ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const alive = f.alive[i], wasAlive = from ? from.alive[i] : alive;
+      if (!alive && !wasAlive) continue;
+      const p = from && wasAlive ? lerpPos(from.pos[i], f.pos[i], k) : f.pos[i];
+      let alpha = alive ? 1 : 1 - k;
+      const cx = ox + (p.x + .5) * ts, cy = oy + (p.y + .5) * ts;
+      const isP = i === pi;
+      const col = isP ? '#e9f6ff' : ECHO_COL[i % ECHO_COL.length];
+      ctx.save();
+      ctx.globalAlpha = alpha * (isP ? 1 : 0.62);
+      ctx.shadowColor = isP ? '#3ee6ff' : col; ctx.shadowBlur = isP ? 22 : 12;
+      const r = ts * (isP ? .3 : .26) * (1 + (isP ? Math.sin(now / 300) * 0.04 : 0));
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+      ctx.shadowBlur = 0;
+      if (isP) {
+        ctx.fillStyle = '#0a1a2a'; ctx.beginPath(); ctx.arc(cx, cy, r * .42, 0, 7); ctx.fill();
+        ctx.fillStyle = '#3ee6ff'; ctx.beginPath(); ctx.arc(cx, cy, r * .22, 0, 7); ctx.fill();
+      } else {
+        ctx.strokeStyle = '#0a0f1c'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, r * .55, now / 500, now / 500 + 4.5); ctx.stroke();
+        ctx.fillStyle = '#0a0f1c'; ctx.font = `700 ${ts * .22}px JetBrains Mono`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(i + 1, cx, cy + 1);
+      }
+      if (f.blocked[i] && k < 1) {
+        ctx.globalAlpha = 1 - k; ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, r + 4 + k * 6, 0, 7); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function frame(now) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if (lv) {
+      let f = frames[frames.length - 1], from = null, k = 1;
+      if (rewindAnim) {
+        const q = Math.min(1, (now - rewindAnim.start) / rewindAnim.dur);
+        const fr = rewindAnim.frames, pos = (fr.length - 1) * (1 - q);
+        const a = Math.ceil(pos), b = Math.floor(pos);
+        f = fr[b]; from = fr[a]; k = 1 - (pos - b);
+        if (a === b) from = null;
+      } else if (anim) {
+        k = Math.min(1, (now - anim.start) / anim.dur);
+        k = 1 - Math.pow(1 - k, 3);
+        from = anim.from; f = anim.to;
+        if (k >= 1) anim = null;
+      }
+      drawTiles(f, now);
+      drawEntities(f, from, k, now);
+      if (rewindAnim) {
+        const W = cv.width / dpr, H = cv.height / dpr;
+        ctx.fillStyle = 'rgba(182,156,255,0.08)'; ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = 'rgba(182,156,255,0.15)';
+        for (let y = (now / 8) % 6; y < H; y += 6) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+        ctx.fillStyle = '#b69cff'; ctx.font = `800 ${Math.min(40, W / 12)}px Unbounded`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('◀◀ ПЕТЛЯ', W / 2, H / 2);
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- ввод ----------
+  const KEYMAP = {
+    ArrowUp: 'U', KeyW: 'U', ArrowDown: 'D', KeyS: 'D', ArrowLeft: 'L', KeyA: 'L', ArrowRight: 'R', KeyD: 'R',
+    Space: 'W', Period: 'W', KeyE: 'loop', Enter: 'loop', KeyZ: 'undo', Backspace: 'undo', KeyR: 'restart', KeyN: 'next',
+  };
+  window.addEventListener('keydown', e => {
+    if (e.code === 'KeyM') { muted = !muted; store.set({ done: [...done], muted }); toast(muted ? 'Звук выключен' : 'Звук включён'); return; }
+    const k = KEYMAP[e.code]; if (!k) return;
+    e.preventDefault();
+    if (k === 'next') { if (won) next(); return; }
+    act(k);
+  });
+  document.querySelectorAll('.pad button').forEach(b => b.addEventListener('click', () => act(b.dataset.k)));
+  $('nextBtn').onclick = () => next();
+
+  // для отладки и автотестов
+  window.game = { act, load, get state() { return { level: li, echoes: echoes.map(e => e.join('')), cur: cur.join(''), won }; } };
+
+  const firstUndone = LEVELS.findIndex((_, i) => !done.has(i));
+  load(firstUndone === -1 ? 0 : firstUndone);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
